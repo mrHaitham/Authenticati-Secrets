@@ -3,7 +3,7 @@ const express = require("express");
 const ejs = require("ejs");
 const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
-const encrypt = require("mongoose-encryption");
+const bcrypt = require("bcrypt");
 
 const app = express();
 
@@ -15,8 +15,8 @@ async function RunDB() {
   try {
     await mongoose.connect("mongodb://127.0.0.1/userDB");
     console.log("Connected to database.");
-    app.listen(3000,() => {   
-            console.log("Server started on port 3000");
+    app.listen(3000, () => {
+      console.log("Server started on port 3000");
     });
   } catch (DBerr) {
     console.log("Failed connect to database.");
@@ -33,11 +33,6 @@ const userSchema = new mongoose.Schema({
   password: String,
 });
 
-userSchema.plugin(encrypt, {
-  secret: process.env.secret,
-  encryptedFields: ["password"],
-});
-
 //  create model
 const userModle = mongoose.model("user", userSchema);
 
@@ -52,12 +47,21 @@ app
   })
   .post(async (req, res) => {
     const { username, password } = req.body;
+
+    const saltRounds = 10;
+
     try {
       const doc = await userModle.findOne({ email: username });
+
       if (doc) {
-        res.render("secrets");
+        const result = await bcrypt.compare(password, doc.password);
+        if (result) {
+          res.render("secrets");
+        } else {
+          res.send({ message: "Your password not correct !!" });
+        }
       } else {
-        res.send({ message: "your not register yet !!" });
+        res.send({ message: "You are not registered yet!" });
       }
     } catch (errFindUser) {}
   });
@@ -69,15 +73,17 @@ app
   })
   .post(async (req, res) => {
     const { username, password } = req.body;
-    const new_user = userModle({
-      email: username,
-      password: password,
-    });
+    const saltRounds = 10;
     try {
+      const hash = await bcrypt.hash(password, saltRounds);
+      const new_user = userModle({
+        email: username,
+        password: hash,
+      });
       await new_user.save();
       res.render("secrets");
-    } catch (errSaveUser) {
-      res.send({ message: "failed to save the new user." });
+    } catch (err) {
+      res.send({ message: "Failed to register the new user: " + err });
     }
   });
 
